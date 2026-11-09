@@ -1,5 +1,35 @@
 #include "circle.h"
 
+void drawCircle(Framebuffer& fb, int centerX, int centerY, int radius, Color color) {
+
+    int x = 0;
+    int y = radius;
+    int p = 1 - radius;
+
+    while (x <= y) {
+
+        // Draw the eight symmetrical points
+        fb.setPixel(centerX + x, centerY + y, color);
+        fb.setPixel(centerX - x, centerY + y, color);
+        fb.setPixel(centerX + x, centerY - y, color);
+        fb.setPixel(centerX - x, centerY - y, color);
+
+        fb.setPixel(centerX + y, centerY + x, color);
+        fb.setPixel(centerX - y, centerY + x, color);
+        fb.setPixel(centerX + y, centerY - x, color);
+        fb.setPixel(centerX - y, centerY - x, color);
+
+        x++;
+
+        if (p < 0) {
+            p = p + 2 * x + 1;
+        } else {
+            y--;
+            p = p + 2 * (x - y) + 1;
+        }
+    }
+}
+
 namespace {
 
 // Fills one horizontal row of pixels from xLeft to xRight (inclusive).
@@ -16,9 +46,9 @@ void fillCircle(Framebuffer& fb, int cx, int cy, int radius, Color color) {
         return;
     }
 
-    // Start at the top of the circle's 1/8 arc: straight up from the centre,
-    // and step x to the right. We stop once we reach the 45-degree diagonal
-    // (x > y); the other 7 octants are mirror images.
+    // Same midpoint algorithm as drawCircle, but instead of plotting the
+    // 8 symmetric points as dots, join each left/right pair with a
+    // horizontal span so the inside gets filled.
     int x = 0;
     int y = radius;
 
@@ -27,8 +57,6 @@ void fillCircle(Framebuffer& fb, int cx, int cy, int radius, Color color) {
     int d = 1 - radius;
 
     while (x <= y) {
-        // Each (x, y) on the arc gives 8 symmetric points. Instead of plotting
-        // them as dots, join the left/right pairs with horizontal spans.
         drawSpan(fb, cx - x, cx + x, cy - y, color); // top cap
         drawSpan(fb, cx - x, cx + x, cy + y, color); // bottom cap
         drawSpan(fb, cx - y, cx + y, cy - x, color); // upper middle
