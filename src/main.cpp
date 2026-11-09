@@ -1,23 +1,27 @@
 #include "framebuffer.h"
+#include "breakout.h"
 
 int main() {
+    const int WIDTH  = 800;
+    const int HEIGHT = 600;
 
-    Framebuffer screen(800, 600);
+    Framebuffer screen(WIDTH, HEIGHT);
 
-    // Clear the screen with a dark background
+    // Dark background
     screen.clear({15, 15, 40});
 
-    // Draw a red pixel
-    screen.setPixel(100, 100, {255, 0, 0});
+    // Build the game objects
+    std::vector<Brick> bricks = makeBricks(WIDTH, 6, 10);
+    Paddle paddle = makePaddle(WIDTH, HEIGHT);
+    Ball ball = makeBall(paddle);
 
-    // Draw a green pixel
-    screen.setPixel(200, 200, {0, 255, 0});
+    // Draw them
+    drawBricks(screen, bricks);
+    drawPaddle(screen, paddle);
+    drawBall(screen, ball);
 
-    // Draw a blue pixel
-    screen.setPixel(300, 300, {0, 0, 255});
-
-    // Save the image
-    screen.savePPM("test.ppm");
+    screen.savePPM("breakout.ppm");
+    screen.saveBMP("breakout.bmp");  // click this one in VS Code to view it
 
     return 0;
 }

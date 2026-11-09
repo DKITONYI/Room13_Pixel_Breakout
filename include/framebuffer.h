@@ -22,6 +22,7 @@ public:
     void setPixel(int x, int y, Color color);
     void clear(Color color);
     void savePPM(const std::string& filename);
+    void saveBMP(const std::string& filename);  // opens directly in VS Code / Windows
 
     int getWidth() const;
     int getHeight() const;
