@@ -26,6 +26,9 @@ public:
 
     int getWidth() const;
     int getHeight() const;
+
+    // Raw RGB bytes, row 0 = top of the screen. Handed to OpenGL as a texture.
+    const Color* data() const;
 };
 
 #endif

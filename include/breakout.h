@@ -12,14 +12,28 @@ struct Brick {
 };
 
 struct Paddle {
-    int x, y;       // top-left corner
+    float x, y;     // top-left corner (float so it can move smoothly)
     int w, h;
     Color color;
+    float squash;   // 1 right after the ball hits, decays to 0 (squash & stretch)
 };
 
 struct Ball {
-    int cx, cy;     // centre
+    float cx, cy;   // centre
+    float vx, vy;   // velocity in pixels per second
     int radius;
+    Color color;
+    float angle;    // spin angle in radians (the ball "rolls" as it moves)
+};
+
+// A destroyed brick: tumbles, shrinks and falls off-screen.
+struct Debris {
+    float cx, cy;   // centre
+    float vx, vy;   // velocity in pixels per second
+    float angle;    // current rotation
+    float spin;     // rotation speed, radians per second
+    float life;     // 1 -> 0; also used as the scale factor
+    int w, h;
     Color color;
 };
 
@@ -35,5 +49,6 @@ Ball makeBall(const Paddle& paddle);
 void drawBricks(Framebuffer& fb, const std::vector<Brick>& bricks);
 void drawPaddle(Framebuffer& fb, const Paddle& paddle);
 void drawBall(Framebuffer& fb, const Ball& ball);
+void drawDebris(Framebuffer& fb, const Debris& d);
 
 #endif

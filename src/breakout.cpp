@@ -1,6 +1,8 @@
 #include "breakout.h"
 #include "polygon.h"
 #include "circle.h"
+#include "transform.h"
+#include <cmath>
 
 namespace {
 
@@ -13,7 +15,7 @@ const int BRICK_TOP = 60;   // distance from top of screen to first row
 const int PADDLE_W      = 120;
 const int PADDLE_H      = 16;
 const int PADDLE_BOTTOM = 40;  // gap between paddle and bottom of screen
-const int PADDLE_BEVEL  = 6;   // size of the cut-off corners
+const float PADDLE_BEVEL = 6;  // size of the cut-off corners
 
 const int BALL_RADIUS = 14;
 const int BALL_GAP    = 4;     // space between ball and paddle at the start
@@ -28,6 +30,12 @@ const Color ROW_COLORS[] = {
     {155,  93, 229},  // purple
 };
 const int NUM_ROW_COLORS = sizeof(ROW_COLORS) / sizeof(ROW_COLORS[0]);
+
+Color darken(Color c, float k) {
+    return {static_cast<unsigned char>(c.r * k),
+            static_cast<unsigned char>(c.g * k),
+            static_cast<unsigned char>(c.b * k)};
+}
 
 } // namespace
 
@@ -57,24 +65,39 @@ Paddle makePaddle(int screenWidth, int screenHeight) {
     Paddle p;
     p.w = PADDLE_W;
     p.h = PADDLE_H;
-    p.x = (screenWidth - PADDLE_W) / 2;
-    p.y = screenHeight - PADDLE_BOTTOM - PADDLE_H;
+    p.x = (screenWidth - PADDLE_W) / 2.0f;
+    p.y = static_cast<float>(screenHeight - PADDLE_BOTTOM - PADDLE_H);
     p.color = {220, 220, 235};
+    p.squash = 0;
     return p;
 }
 
 Ball makeBall(const Paddle& paddle) {
     Ball ball;
     ball.radius = BALL_RADIUS;
-    ball.cx = paddle.x + paddle.w / 2;
+    ball.cx = paddle.x + paddle.w / 2.0f;
     // Bottom of the ball (cy + radius) sits BALL_GAP pixels above the paddle.
     ball.cy = paddle.y - BALL_GAP - BALL_RADIUS - 1;
+    ball.vx = 0;
+    ball.vy = 0;
     ball.color = {255, 255, 255};
+    ball.angle = 0;
     return ball;
 }
 
 void drawBall(Framebuffer& fb, const Ball& ball) {
-    fillCircle(fb, ball.cx, ball.cy, ball.radius, ball.color);
+    const int cx = static_cast<int>(std::lround(ball.cx));
+    const int cy = static_cast<int>(std::lround(ball.cy));
+    fillCircle(fb, cx, cy, ball.radius, ball.color);
+
+    // A cross "seam" painted on the ball. It is defined once in local
+    // coordinates and placed with  T(centre) * R(angle),  so the ball
+    // visibly spins as it rolls.
+    const Mat3 M = Mat3::translate(ball.cx, ball.cy) * Mat3::rotate(ball.angle);
+    const Color seam = {170, 180, 210};
+    const float len = ball.radius * 1.5f;
+    fillTransformedPolygon(fb, M, centredRect(len, 3), seam);
+    fillTransformedPolygon(fb, M, centredRect(3, len), seam);
 }
 
 void drawBricks(Framebuffer& fb, const std::vector<Brick>& bricks) {
@@ -87,20 +110,44 @@ void drawBricks(Framebuffer& fb, const std::vector<Brick>& bricks) {
 }
 
 void drawPaddle(Framebuffer& fb, const Paddle& p) {
-    // An octagon: a rectangle with its four corners cut off.
-    // Uses the general polygon fill, not just fillRect.
-    const int c = PADDLE_BEVEL;
-    const int x0 = p.x, x1 = p.x + p.w;
-    const int y0 = p.y, y1 = p.y + p.h;
+    // An octagon (rectangle with its corners cut off), defined ONCE in
+    // local coordinates centred on (0, 0).
+    const float hw = p.w / 2.0f, hh = p.h / 2.0f, c = PADDLE_BEVEL;
+    const std::vector<Vec2> shape = {
+        {-hw + c, -hh}, { hw - c, -hh},   // top edge
+        { hw, -hh + c}, { hw,  hh - c},   // right side
+        { hw - c,  hh}, {-hw + c,  hh},   // bottom edge
+        {-hw,  hh - c}, {-hw, -hh + c},   // left side
+    };
 
-    fillPolygon(fb, {
-        {x0 + c, y0},      // top edge
-        {x1 - c, y0},
-        {x1,     y0 + c},  // right side
-        {x1,     y1 - c},
-        {x1 - c, y1},      // bottom edge
-        {x0 + c, y1},
-        {x0,     y1 - c},  // left side
-        {x0,     y0 + c},
-    }, p.color);
+    // Squash & stretch: when the ball lands, the paddle gets wider and
+    // flatter, then springs back. Scale is anchored on the paddle's bottom
+    // edge so it squashes DOWN onto the "floor" instead of shrinking in mid-air.
+    const float s  = p.squash;
+    const float sx = 1.0f + 0.18f * s;
+    const float sy = 1.0f - 0.35f * s;
+
+    const float centreX = p.x + hw;
+    const float bottomY = p.y + p.h;
+
+    //   world = T(centre-bottom) * S(sx, sy) * T(0, -hh)
+    // The right-most matrix runs first: lift the shape so its bottom edge
+    // sits on the local origin, scale, then move it into place.
+    const Mat3 M = Mat3::translate(centreX, bottomY)
+                 * Mat3::scale(sx, sy)
+                 * Mat3::translate(0, -hh);
+
+    fillTransformedPolygon(fb, M, shape, p.color);
+}
+
+void drawDebris(Framebuffer& fb, const Debris& d) {
+    // The classic composite transform:  T * R * S
+    //   1. S: shrink it as it fades (life 1 -> 0)
+    //   2. R: tumble it around its own centre
+    //   3. T: move it to where it has fallen to
+    const Mat3 M = Mat3::translate(d.cx, d.cy)
+                 * Mat3::rotate(d.angle)
+                 * Mat3::scale(d.life, d.life);
+
+    fillTransformedPolygon(fb, M, centredRect(d.w, d.h), darken(d.color, 0.5f + 0.5f * d.life));
 }
